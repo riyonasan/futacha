@@ -69,10 +69,12 @@ ctest --test-dir build/orb-tests --output-on-failure
 
 個別テストの成功はAPKのビルド・実機の動作確認を意味しません。
 
-再入場対策とnative最適化の変更は、次回のまとめビルドでAPKへ反映します。
-現段階では軽量なKotlin単体テスト17件を確認した段階です。
-次回はAndroid全体のコンパイル、`compile_commands.json`での最終有効な`-O2`、
-共有OpenCVを使う追尾機能、実機での再入場と初回待ち時間を確認します。
+再入場対策・native最適化・メニュー表示の変更をまとめたAndroid Debugビルドを確認しました。
+ORB関連のAndroidホストテスト17件とAndroidアプリ単体テスト97件が成功しています。
+4種類のCPU向けの`compile_commands.json`で、対象OpenCVモジュールとORBソースの
+最終有効な最適化オプションが`-O2`であることを確認しました。
+APKの署名・16KB配置・ORBのJNIエクスポートも確認済みです。
+共有OpenCVを使う追尾機能の実機動作と、実機での再入場・初回待ち時間の改善は未確認です。
 
 ## Android試用APKのビルド
 
