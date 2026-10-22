@@ -4,6 +4,7 @@ import com.valoser.futacha.shared.ui.FutachaAppLockAwareWindow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -756,8 +757,7 @@ private fun FtutterCatalogGrid(
                 onOpen = { if (orb.verdict(it) == FtutterOrbVerdict.CLEAR) onOpen(it) },
                 onZoom = { if (it == null || orb.verdict(it) == FtutterOrbVerdict.CLEAR) onZoom(it) },
                 onThumbMenu = onThumbMenu,
-                imageVerdict = orb.verdict(item),
-                imageNgAvailable = orb.available
+                imageVerdict = orb.verdict(item)
             )
         }
         val blur = if (zoomedActive) Modifier.blur(10.dp) else Modifier
@@ -830,8 +830,7 @@ private fun FtutterCatalogCell(
     onOpen: (CatalogItem) -> Unit,
     onZoom: (CatalogItem?) -> Unit,
     onThumbMenu: (CatalogItem) -> Unit,
-    imageVerdict: FtutterOrbVerdict?,
-    imageNgAvailable: Boolean
+    imageVerdict: FtutterOrbVerdict?
 ) {
     val colors = LocalFtutterColors.current
     val numbers = ftutterCatalogNumbers(item, history, readCount)
@@ -892,11 +891,6 @@ private fun FtutterCatalogCell(
             )
             else Text(if (imageVerdict == FtutterOrbVerdict.ERROR) "判定失敗\n更新で再試行" else "画像NG判定中…",
                 color = colors.text, modifier = Modifier.align(Alignment.Center).padding(4.dp), fontSize = 12.sp)
-            if (imageNgAvailable) IconButton(onClick = { onThumbMenu(item) },
-                modifier = Modifier.align(Alignment.BottomStart).background(colors.background.copy(alpha = .8f))
-                    .testTag("ftutter-catalog-image-actions")) {
-                Icon(Icons.Rounded.MoreVert, contentDescription = "スレ画の操作・画像NG", tint = colors.text)
-            }
             if (settings.numberPosition == FtutterNumberPosition.OVERLAY) {
                 unread(Modifier.align(Alignment.TopStart))
                 badge(Modifier.align(Alignment.BottomEnd))
@@ -922,7 +916,13 @@ private fun FtutterCatalogCell(
                 maxLines = settings.titleLines,
                 minLines = if (settings.sameHeight) settings.titleLines else 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 1.dp)
+                modifier = Modifier.fillMaxWidth()
+                    .combinedClickable(
+                        onClick = { currentOnOpen(currentItem) },
+                        onLongClickLabel = "スレの操作",
+                        onLongClick = { currentOnThumbMenu(currentItem) }
+                    )
+                    .padding(horizontal = 2.dp, vertical = 1.dp)
             )
         }
         if (settings.numberPosition == FtutterNumberPosition.UNDER_TITLE) numbersRow()
