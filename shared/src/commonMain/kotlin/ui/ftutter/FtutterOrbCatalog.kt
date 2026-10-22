@@ -29,7 +29,7 @@ internal fun rememberFtutterOrbCatalog(
     val preferences = LocalFtutterPreferences.current
     val https = preferences.ftutterBool(FtutterKeys.USE_HTTPS, false)
     val showBeforeCheck = preferences.ftutterBool(FtutterKeys.ORB_SHOW_BEFORE_CHECK, false)
-    val workers = preferences.ftutterInt(FtutterKeys.ORB_WORKERS, 1, 1..3)
+    val workers = preferences.ftutterInt(FtutterKeys.ORB_WORKERS, 3, 1..10)
     val path = remember(platformContext) { ftutterOrbStoragePath(platformContext) }
     val available = ftutterOrbAvailable && path != null
     val state = remember(board, path, available, https, cache) {
@@ -114,8 +114,8 @@ internal fun rememberFtutterOrbCatalog(
             Text("似た別の画像も隠れる場合があります。")
             FtutterCheckSetting("画像を先に表示する", FtutterKeys.ORB_SHOW_BEFORE_CHECK, false,
                 preferences, savePreference, note = "NG画像が一時的に表示されます。")
-            FtutterSliderSetting("同時に判定する数", FtutterKeys.ORB_WORKERS, 1.0, 3.0, 1.0, 1.0,
-                preferences, savePreference, note = "数を増やすと処理中の負荷も増えます。")
+            FtutterSliderSetting("同時に判定する数", FtutterKeys.ORB_WORKERS, 1.0, 10.0, 1.0, 3.0,
+                preferences, savePreference)
             state.loadError?.let { Text(it) }
             if (state.active.isEmpty()) Text("この板に適用される登録はありません")
             state.active.asReversed().forEach { rule ->

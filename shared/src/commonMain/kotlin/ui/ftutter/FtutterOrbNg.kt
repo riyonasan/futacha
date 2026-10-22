@@ -154,7 +154,7 @@ internal suspend fun ftutterCheckOrb(
     preferredUrls: () -> Set<String> = { emptySet() },
     workers: Int = 3
 ) {
-    require(workers in 1..3)
+    require(workers in 1..10)
     val seeds = rules.map { it.url to Base64.decode(it.features) }
     val pending = urls.toMutableSet()
     val queue = Mutex()

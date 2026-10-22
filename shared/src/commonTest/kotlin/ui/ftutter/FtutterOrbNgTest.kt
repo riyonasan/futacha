@@ -161,9 +161,9 @@ class FtutterOrbNgTest {
         } finally { client.close() }
     }
 
-    @Test fun twoWorkersProcessOnlyTwoImagesAtOnce() = runBlocking {
+    @Test fun tenWorkersRespectLimitAndFinishRemainingImages() = runBlocking {
         val gate = CompletableDeferred<Unit>()
-        val bothStarted = CompletableDeferred<Unit>()
+        val batchStarted = CompletableDeferred<Unit>()
         val lock = Mutex()
         var active = 0
         var peak = 0
@@ -172,22 +172,22 @@ class FtutterOrbNgTest {
             lock.withLock {
                 active++
                 peak = maxOf(peak, active)
-                if (active == 2) bothStarted.complete(Unit)
+                if (active == 10) batchStarted.complete(Unit)
             }
             try { gate.await(); respond(byteArrayOf(1)) }
             finally { lock.withLock { active-- } }
         })
         val job = launch {
-            ftutterCheckOrb((0..5).map { "https://example.test/$it" }, listOf(rule()),
+            ftutterCheckOrb((0..14).map { "https://example.test/$it" }, listOf(rule()),
                 FtutterOrbCache { payload() }, client, { _, _ -> results++ },
-                match = { _, _ -> false }, workers = 2)
+                match = { _, _ -> false }, workers = 10)
         }
         try {
-            withTimeout(2_000) { bothStarted.await() }
+            withTimeout(2_000) { batchStarted.await() }
             gate.complete(Unit)
             withTimeout(2_000) { job.join() }
-            assertEquals(2, lock.withLock { peak })
-            assertEquals(6, results)
+            assertEquals(10, lock.withLock { peak })
+            assertEquals(15, results)
         } finally { job.cancelAndJoin(); client.close() }
     }
 
