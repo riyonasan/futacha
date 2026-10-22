@@ -128,6 +128,7 @@ internal object FtutterKeys {
     // ピックアップ・NG
     val NG_LIST = k("NGList")
     val NG_CHAIN = k("nGChain")
+    val ORB_SHOW_BEFORE_CHECK = k("orbShowBeforeCheck")
     val PICKUP_ORDER_MODES = k("applyPickupOrderMode")
     val HIDDEN_THREADS = k("hihyouji")
 

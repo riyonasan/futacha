@@ -336,11 +336,13 @@ internal fun FtutterCatalogScreen(
     val ngResult = computedNg ?: lastNgResult?.takeIf { it.first == key }?.second
         ?: FtutterCatalogNgResult(emptyList(), emptyMap(), emptyList())
     val orb = rememberFtutterOrbCatalog(ftutterBoardBaseUrl(board.url).substringAfter("://").lowercase(),
-        ngResult.items, holder.refreshTick, orbMediaServices, holder.orbCache, onNotice,
+        ngResult.items, holder.refreshTick, orbMediaServices, holder.orbCache, onNotice, savePreference,
         visibleThreadUrls = {
             if (settings.sameHeight) holder.gridState.layoutInfo.visibleItemsInfo.mapNotNull { it.key as? String }.toSet()
             else holder.staggeredState.layoutInfo.visibleItemsInfo.mapNotNull { it.key as? String }.toSet()
         })
+    val zoomAllowed = zoomed?.let { orb.displayVerdict(it) == FtutterOrbVerdict.CLEAR } ?: false
+    LaunchedEffect(zoomed, zoomAllowed) { if (!zoomAllowed) zoomed = null }
     // 照合に時間がかかりすぎて使わなかったNGの正規表現は、一度だけ知らせる（設定のNGの一覧にも出る）。
     var slowNgNoticed by remember(matcher) { mutableStateOf(emptySet<FtutterNgRule>()) }
     LaunchedEffect(titleNg) {
@@ -436,7 +438,7 @@ internal fun FtutterCatalogScreen(
                     Text(message, color = colors.text, modifier = Modifier.align(Alignment.Center).padding(24.dp))
                 }
             }
-            zoomed?.takeIf { orb.verdict(it) == FtutterOrbVerdict.CLEAR }?.let { item -> FtutterCatalogZoom(item, settings, design) }
+            zoomed?.takeIf { orb.displayVerdict(it) == FtutterOrbVerdict.CLEAR }?.let { item -> FtutterCatalogZoom(item, settings, design) }
             if (archiveClient != null && searching && query.isNotBlank() && zoomed == null) {
                 FtutterArchiveSearchButton(query, onClick = { archiveQuery = query }, modifier = Modifier.align(Alignment.BottomEnd))
             }
@@ -759,10 +761,10 @@ private fun FtutterCatalogGrid(
                 readCount = readCounts[ftutterCanonicalThreadUrl(item.threadUrl)],
                 pickupWord = pickupWords[item.threadUrl],
                 targetSizePx = cellPx,
-                onOpen = { if (orb.verdict(it) == FtutterOrbVerdict.CLEAR) onOpen(it) },
-                onZoom = { if (it == null || orb.verdict(it) == FtutterOrbVerdict.CLEAR) onZoom(it) },
+                onOpen = { if (orb.displayVerdict(it) == FtutterOrbVerdict.CLEAR) onOpen(it) },
+                onZoom = { if (it == null || orb.displayVerdict(it) == FtutterOrbVerdict.CLEAR) onZoom(it) },
                 onThumbMenu = onThumbMenu,
-                imageVerdict = orb.verdict(item),
+                imageVerdict = orb.displayVerdict(item),
                 imageBytes = imageUrl?.let(holder.orbCache::image),
                 imageCacheKey = imageUrl?.let { "ftutter-orb:$it" }
             )

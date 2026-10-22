@@ -151,13 +151,15 @@ internal suspend fun ftutterCheckOrb(
     urls: List<String>, rules: List<FtutterOrbRule>, cache: FtutterOrbCache, client: HttpClient,
     onResult: (String, FtutterOrbVerdict) -> Unit,
     match: (ByteArray, ByteArray) -> Boolean = ::ftutterMatchOrb,
-    preferredUrls: () -> Set<String> = { emptySet() }
+    preferredUrls: () -> Set<String> = { emptySet() },
+    workers: Int = 3
 ) {
+    require(workers in 1..3)
     val seeds = rules.map { it.url to Base64.decode(it.features) }
     val pending = urls.toMutableSet()
     val queue = Mutex()
     coroutineScope {
-        repeat(3) {
+        repeat(workers) {
             launch {
                 while (true) {
                     val url = queue.withLock {

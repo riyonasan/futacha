@@ -22,13 +22,18 @@ import kotlin.io.encoding.Base64
 internal fun rememberFtutterOrbCatalog(
     board: String, items: List<CatalogItem>, refreshTick: Int, services: FutaberMediaServices?,
     cache: FtutterOrbCache, onNotice: (String) -> Unit,
+    savePreference: (String, String) -> Unit,
     visibleThreadUrls: () -> Set<String>
 ): FtutterOrbCatalogState {
     val platformContext = LocalPlatformContext.current
     val https = LocalFtutterPreferences.current.ftutterBool(FtutterKeys.USE_HTTPS, false)
+    val showBeforeCheck = LocalFtutterPreferences.current.ftutterBool(FtutterKeys.ORB_SHOW_BEFORE_CHECK, false)
     val path = remember(platformContext) { ftutterOrbStoragePath(platformContext) }
     val available = ftutterOrbAvailable && path != null
-    val state = remember(board, path, available, https) { FtutterOrbCatalogState(board, available, https) }
+    val state = remember(board, path, available, https, cache) {
+        FtutterOrbCatalogState(board, available, https, showBeforeCheck, cache)
+    }
+    state.showBeforeCheck = showBeforeCheck
     val store = remember(path) { path?.let { ftutterOrbStore(it) } }
     val scope = rememberCoroutineScope()
     val currentNotice by rememberUpdatedState(onNotice)
@@ -44,7 +49,7 @@ internal fun rememberFtutterOrbCatalog(
     }
     val rules = state.rules
     val client = services?.httpClient
-    LaunchedEffect(state, rules, items, refreshTick, client) {
+    LaunchedEffect(state, rules, items, refreshTick, client, showBeforeCheck) {
         if (!available || rules == null) return@LaunchedEffect
         if (state.checkedRules != rules) {
             state.verdicts = emptyMap()
@@ -60,6 +65,7 @@ internal fun rememberFtutterOrbCatalog(
         val pending = urls.filter { state.verdicts[it] !in setOf(FtutterOrbVerdict.CLEAR, FtutterOrbVerdict.HIDDEN) }
         if (pending.isEmpty()) return@LaunchedEffect
         if (client == null) {
+            state.verdicts = state.verdicts + pending.associateWith { FtutterOrbVerdict.ERROR }
             currentNotice("通信機能を初期化できないため、画像NGの判定前の画像を伏せています")
             return@LaunchedEffect
         }
@@ -71,7 +77,8 @@ internal fun rememberFtutterOrbCatalog(
                 failureNoticed = true
                 currentNotice("画像NGを判定できない画像は伏せています。更新で再試行できます")
             }
-        }, preferredUrls = { currentVisibleThreadUrls().mapNotNull { urlByThread[it] }.toSet() })
+        }, preferredUrls = { currentVisibleThreadUrls().mapNotNull { urlByThread[it] }.toSet() },
+            workers = if (showBeforeCheck) 1 else 3)
     }
 
     var busy by remember { mutableStateOf(false) }
@@ -102,6 +109,9 @@ internal fun rememberFtutterOrbCatalog(
         title = { Text("カタログのORB画像NG") },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) {
             Text("登録した画像の加工違いを照合します。同じ顔などを共有する別画像も隠れる場合があります。スレッド内の画像には適用しません。")
+            FtutterCheckSetting("ORB判定前に画像を表示する", FtutterKeys.ORB_SHOW_BEFORE_CHECK, false,
+                LocalFtutterPreferences.current, savePreference,
+                note = "カタログの表示を優先し、ORBを1件ずつ処理します。NG画像が判定まで一時的に表示されます。判定に失敗した画像は伏せます。")
             state.loadError?.let { Text(it) }
             if (state.active.isEmpty()) Text("この板に適用される登録はありません")
             state.active.asReversed().forEach { rule ->

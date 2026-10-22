@@ -120,6 +120,47 @@ class FtutterOrbNgTest {
         assertEquals(FtutterOrbVerdict.CLEAR, FtutterOrbCatalogState("board", false).verdict(candidate))
     }
 
+    @Test fun displayFirstStillHidesFailuresKnownMatchesAndWaitsForRules() {
+        val cache = FtutterOrbCache { payload() }
+        val state = FtutterOrbCatalogState("img.2chan.net/b/", true, true, true, cache)
+        val candidate = item("https://img.2chan.net/b/thumb/3s.jpg")
+        assertNull(state.displayVerdict(candidate))
+        state.rules = listOf(rule())
+        assertNull(state.verdict(candidate))
+        assertEquals(FtutterOrbVerdict.CLEAR, state.displayVerdict(candidate))
+        assertEquals(FtutterOrbVerdict.HIDDEN, state.displayVerdict(item()))
+        cache.rememberVerdict(requireNotNull(state.url(candidate)), state.active, FtutterOrbVerdict.HIDDEN)
+        assertEquals(FtutterOrbVerdict.HIDDEN, state.displayVerdict(candidate))
+        state.rules = listOf(rule("https://img.2chan.net/b/thumb/2s.jpg"))
+        assertEquals(FtutterOrbVerdict.CLEAR, state.displayVerdict(candidate))
+        state.checkedRules = state.rules
+        state.verdicts = mapOf(requireNotNull(state.url(candidate)) to FtutterOrbVerdict.ERROR)
+        assertEquals(FtutterOrbVerdict.ERROR, state.displayVerdict(candidate))
+        state.verdicts = emptyMap()
+        state.showBeforeCheck = false
+        assertNull(state.displayVerdict(candidate))
+        state.rules = null
+        state.loadError = "unreadable"
+        state.showBeforeCheck = true
+        assertEquals(FtutterOrbVerdict.ERROR, state.displayVerdict(candidate))
+    }
+
+    @Test fun displayFirstWorkerFinishesOneImageBeforeStartingTheNext() = runBlocking {
+        val urls = (0..4).map { "https://example.test/$it" }
+        var completed = 0
+        var requests = 0
+        val client = HttpClient(MockEngine {
+            assertEquals(completed, requests)
+            requests++
+            respond(byteArrayOf(1))
+        })
+        try {
+            ftutterCheckOrb(urls, listOf(rule()), FtutterOrbCache { payload() }, client,
+                { _, _ -> completed++ }, match = { _, _ -> false }, workers = 1)
+            assertEquals(urls.size, completed)
+        } finally { client.close() }
+    }
+
     @Test fun usesThumbAndRespectsHttpsPreference() {
         val state = FtutterOrbCatalogState("img.2chan.net/b/", true, true)
         assertEquals("https://img.2chan.net/b/thumb/1s.jpg", state.url(item("http://img.2chan.net/b/cat/1s.jpg")))
