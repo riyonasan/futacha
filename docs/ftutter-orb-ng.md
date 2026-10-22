@@ -53,3 +53,39 @@ ctest --test-dir build/orb-tests --output-on-failure
 ```
 
 個別テストの成功はAPKのビルド・実機の動作確認を意味しません。
+
+## Android試用APKのビルド
+
+READMEのAndroid Debugビルド手順を使います。公開ソースで欠落していた
+`tools/prepare-android-tracking.py` と `tools/prepare-voicevox.py` を補完しています。
+Python 3.11以上、README指定のJDK 17／Gradle用JDK 21、SDK 37、
+NDK 29.0.14206865、CMake 3.22.1が必要です。
+初回は公式配布元から依存を取得するためネット接続が必要です。
+
+```powershell
+.\gradlew.bat :app-android:assembleDebug '-Pfutacha.orbTest=true'
+```
+
+`app-android/build/outputs/apk/debug/app-android-debug.apk` に生成します。
+このオプションを付けたDebug版は「ふたちゃ ORB検証」、アプリIDは
+`com.valoser.futacha.orbtest` になります。既存アプリと併存でき、データも別です。
+オプションを省略したビルドとRelease版のアプリIDは変更しません。
+Debug署名の試用APKであり、正式リリース用の品質・配布ゲートを通ったものではありません。
+既存の`-Pfutacha.splitApks=true`も付けるとCPU別APKを生成します。
+Pixel 9aには`app-android-arm64-v8a-debug.apk`を使用します。
+
+補完した準備処理はOpenCVの上記コミット、VOICEVOX CORE 0.17.0と
+公式推奨のVOICEVOX ONNX Runtime 1.23.2を使い、アーカイブのSHA-256を固定します。
+生成物はGit管理外の`build/`に置きます。Android用のみを補完しており、
+欠落しているデスクトップホストやRelease用シンボル最適化ツールは対象外です。
+デスクトップホストがない公開スナップショットでもAndroidを構成できるようにしています。
+`testDebugUnitTest`には欠落した`tools/tests/test_android_symbols.py`を呼ぶフックも
+残っています。0件のテスト成功を検証済みと扱わないため、このスナップショットでの
+Androidユニットテストは`-x :app-android:testNativeSymbolPackaging`を付けて実行し、
+そのシンボル梱包テストは未実施として扱います。
+
+準備処理の境界チェックは次で実行できます。
+
+```powershell
+python -m unittest discover -s tools/tests -p test_native_dependencies.py -v
+```

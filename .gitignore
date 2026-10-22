@@ -45,6 +45,7 @@ credentials/
 iosApp/Configuration/Local.xcconfig
 
 ### Misc ###
+__pycache__/
 *.keystore
 *.jks
 *.mobileprovision

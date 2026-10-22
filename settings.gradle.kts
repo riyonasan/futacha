@@ -27,4 +27,5 @@ include(":app-wear")
 include(":baselineprofile")
 include(":shared")
 
-include(":app-desktop")
+// Some public source snapshots omit the desktop host; Android does not depend on it.
+if (file("app-desktop/build.gradle.kts").isFile) include(":app-desktop")

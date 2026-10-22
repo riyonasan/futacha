@@ -107,6 +107,8 @@ configurations.configureEach {
     exclude(group = "androidx.privacysandbox.ads", module = "ads-adservices-java")
 }
 
+val orbTestBuild = providers.gradleProperty("futacha.orbTest").map { it.toBooleanStrict() }.getOrElse(false)
+
 android {
     namespace = "com.valoser.futacha"
     compileSdk = 37
@@ -165,6 +167,13 @@ android {
     }
 
     buildTypes {
+        debug {
+            if (orbTestBuild) {
+                applicationIdSuffix = ".orbtest"
+                versionNameSuffix = "-orb-test"
+                resValue("string", "app_name", "ふたちゃ ORB検証")
+            }
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -179,6 +188,7 @@ android {
     }
     buildFeatures {
         compose = true
+        resValues = orbTestBuild
     }
     sourceSets.named("main") {
         // AGP 9.3 rejects Providers on the legacy SourceSet API.  This is a
@@ -186,6 +196,7 @@ android {
         // producer task below.
         assets.directories.add(sharedComposeAndroidAssets.get().asFile.absolutePath)
         assets.directories.add(rootProject.layout.buildDirectory.dir("android-tracking/licenses").get().asFile.absolutePath)
+        assets.directories.add(rootProject.layout.buildDirectory.dir("voicevox/licenses").get().asFile.absolutePath)
     }
     sourceSets.named("androidTest") {
         kotlin.directories.add(rootProject.file("shared/src/videoTestFixtures/kotlin").absolutePath)
@@ -199,6 +210,7 @@ android {
 
 val prepareAndroidTracking = tasks.register<Exec>("prepareAndroidTracking") {
     inputs.file(rootProject.file("tools/prepare-android-tracking.py"))
+    inputs.file(rootProject.file("tools/native_dependencies.py"))
     outputs.dir(rootProject.layout.buildDirectory.dir("android-tracking/opencv"))
     outputs.dir(rootProject.layout.buildDirectory.dir("android-tracking/licenses"))
     commandLine(if (System.getProperty("os.name").startsWith("Windows")) "python" else "python3",
@@ -216,9 +228,11 @@ tasks.matching { it.name.startsWith("configureCMake") || it.name == "preBuild" }
 
 val prepareAndroidVoicevox by tasks.registering(Exec::class) {
     inputs.file(rootProject.file("tools/prepare-voicevox.py"))
+    inputs.file(rootProject.file("tools/native_dependencies.py"))
     inputs.property("ndkVersion", "29.0.14206865")
     outputs.dir(rootProject.layout.buildDirectory.dir("voicevox/android/jniLibs"))
     outputs.file(rootProject.layout.buildDirectory.file("voicevox/include/voicevox_core.h"))
+    outputs.dir(rootProject.layout.buildDirectory.dir("voicevox/licenses"))
     val sdk = localProperties.getProperty("sdk.dir") ?: System.getenv("ANDROID_SDK_ROOT")
         ?: System.getenv("ANDROID_HOME") ?: "${System.getProperty("user.home")}/Library/Android/sdk"
     commandLine(if (System.getProperty("os.name").startsWith("Windows")) "python" else "python3",
@@ -271,7 +285,7 @@ androidComponents {
 }
 
 tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
-    dependsOn(syncSharedComposeResourcesForAndroid, prepareAndroidTracking)
+    dependsOn(syncSharedComposeResourcesForAndroid, prepareAndroidTracking, prepareAndroidVoicevox)
 }
 
 // Lint model and analysis tasks read the asset source set directly instead of
@@ -279,7 +293,7 @@ tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.con
 tasks.matching {
     it.name.contains("lint", ignoreCase = true)
 }.configureEach {
-    dependsOn(syncSharedComposeResourcesForAndroid, prepareAndroidTracking)
+    dependsOn(syncSharedComposeResourcesForAndroid, prepareAndroidTracking, prepareAndroidVoicevox)
 }
 
 // Android Studio redirects every APK-producing project to one directory. Preserve
