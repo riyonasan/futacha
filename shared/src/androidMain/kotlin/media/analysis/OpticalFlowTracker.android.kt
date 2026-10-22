@@ -11,6 +11,8 @@ internal object TrackingNative {
                       x: Float, y: Float, w: Float, h: Float): Int
     external fun step(tracker: Long, gray: ByteArray, width: Int, height: Int,
                       sceneCut: Boolean, output: FloatArray): Int
+    external fun extractOrb(gray: ByteArray, width: Int, height: Int): ByteArray?
+    external fun matchOrb(left: ByteArray, right: ByteArray): Int
 }
 
 // A missing bridge is an UnsatisfiedLinkError (later NoClassDefFoundError), which the editors'

@@ -112,6 +112,7 @@ internal data class FtutterCatalogLoad(
 )
 
 internal class FtutterCatalogHolder {
+    val orbCache = FtutterOrbCache()
     private val searches = LinkedHashMap<String, com.valoser.futacha.shared.ui.futaber.FutaberCatalogSearchState>()
     fun search(boardId: String): com.valoser.futacha.shared.ui.futaber.FutaberCatalogSearchState {
         val state = searches.remove(boardId) ?: com.valoser.futacha.shared.ui.futaber.FutaberCatalogSearchState()
@@ -210,7 +211,8 @@ internal fun FtutterCatalogScreen(
     commonCatalogNgWords: List<String> = emptyList(),
     /** 拡張「過去ログ検索」がONの時の通信（OFFなら null で、ボタンを出さない）。 */
     archiveClient: io.ktor.client.HttpClient? = null,
-    openTabUrls: Set<String> = emptySet()
+    openTabUrls: Set<String> = emptySet(),
+    orbMediaServices: com.valoser.futacha.shared.ui.futaber.FutaberMediaServices? = null
 ) {
     val colors = LocalFtutterColors.current
     val design = remember(preferences) { parseFtutterDesign(preferences) }
@@ -332,6 +334,8 @@ internal fun FtutterCatalogScreen(
     } }
     val ngResult = computedNg ?: lastNgResult?.takeIf { it.first == key }?.second
         ?: FtutterCatalogNgResult(emptyList(), emptyMap(), emptyList())
+    val orb = rememberFtutterOrbCatalog(ftutterBoardBaseUrl(board.url).substringAfter("://").lowercase(),
+        ngResult.items, holder.refreshTick, orbMediaServices, holder.orbCache, onNotice)
     // 照合に時間がかかりすぎて使わなかったNGの正規表現は、一度だけ知らせる（設定のNGの一覧にも出る）。
     var slowNgNoticed by remember(matcher) { mutableStateOf(emptySet<FtutterNgRule>()) }
     LaunchedEffect(titleNg) {
@@ -342,7 +346,12 @@ internal fun FtutterCatalogScreen(
         }
     }
     var archiveQuery by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(computedNg) { computedNg?.let { holder.ngRemoved = it.ngRemoved } }
+    val imageNgRemoved = ngResult.items.filter { orb.verdict(it) == FtutterOrbVerdict.HIDDEN }
+    LaunchedEffect(computedNg, imageNgRemoved) { computedNg?.let {
+        holder.ngRemoved = (it.ngRemoved + imageNgRemoved).distinctBy { item -> item.threadUrl }
+        holder.ngReasons = holder.ngReasons.filterKeys { url -> it.ngRemoved.any { item -> item.threadUrl == url } } +
+            imageNgRemoved.associate { item -> item.threadUrl to "ORB画像NG" }
+    } }
     val viewedFirstKey = com.valoser.futacha.shared.ui.board.viewedThreadFirstKey(board.url)
     val viewedFirstEnabled = preferences[viewedFirstKey] == "ON"
     LaunchedEffect(viewedFirstEnabled, key) {
@@ -351,7 +360,7 @@ internal fun FtutterCatalogScreen(
         }
     }
     val visible = com.valoser.futacha.shared.ui.board.catalogWithViewedThreadFirst(
-        ngResult.items.take(settings.maxThreadCount), load?.viewedFirstId.takeIf { viewedFirstEnabled })
+        ngResult.items.filter { orb.verdict(it) != FtutterOrbVerdict.HIDDEN }.take(settings.maxThreadCount), load?.viewedFirstId.takeIf { viewedFirstEnabled })
     var ngDraft by remember { mutableStateOf<FtutterNgRule?>(null) }
     var delTarget by remember { mutableStateOf<CatalogItem?>(null) }
     var historyDeleteTarget by remember { mutableStateOf<CatalogItem?>(null) }
@@ -411,7 +420,8 @@ internal fun FtutterCatalogScreen(
                 onRefresh = { fromBottom -> refreshFromBottom = fromBottom; refresh() },
                 onOpen = onOpenThread,
                 onZoom = { zoomed = it },
-                onThumbMenu = { thumbMenu = it }
+                onThumbMenu = { thumbMenu = it },
+                orb = orb
             )
             if (isLoading && visible.isEmpty()) {
                 CircularProgressIndicator(Modifier.align(Alignment.Center), color = colors.indicator)
@@ -421,7 +431,7 @@ internal fun FtutterCatalogScreen(
                     Text(message, color = colors.text, modifier = Modifier.align(Alignment.Center).padding(24.dp))
                 }
             }
-            zoomed?.let { item -> FtutterCatalogZoom(item, settings, design) }
+            zoomed?.takeIf { orb.verdict(it) == FtutterOrbVerdict.CLEAR }?.let { item -> FtutterCatalogZoom(item, settings, design) }
             if (archiveClient != null && searching && query.isNotBlank() && zoomed == null) {
                 FtutterArchiveSearchButton(query, onClick = { archiveQuery = query }, modifier = Modifier.align(Alignment.BottomEnd))
             }
@@ -456,6 +466,7 @@ internal fun FtutterCatalogScreen(
                     onTogglePrivacy = { savePreference(FtutterKeys.IS_PRIVACY, (!settings.privacy).toString()) },
                     onToolbarEdit = onEditToolbar,
                     onHiddenAndNg = onOpenHiddenAndNg,
+                    onOrbNg = if (orb.available) ({ orb.managing = true }) else null,
                     onOpenFromUrl = { openUrlDialog = true },
                     onCopyUrl = {
                         clipboard.setText(AnnotatedString(ftutterBoardBaseUrl(board.url) + "futaba.php?mode=cat"))
@@ -493,6 +504,7 @@ internal fun FtutterCatalogScreen(
         FtutterThumbDialog(
             hasHistory = historyIndex[item.id] != null,
             onDismiss = { thumbMenu = null },
+            onImageNg = if (orb.available && ftutterOrbThumbnail(item) != null) ({ thumbMenu = null; orb.target = item }) else null,
             onAction = { action ->
                 thumbMenu = null
                 when (action) {
@@ -670,6 +682,7 @@ private fun FtutterCatalogMenu(
     onTogglePrivacy: () -> Unit,
     onToolbarEdit: () -> Unit,
     onHiddenAndNg: () -> Unit,
+    onOrbNg: (() -> Unit)? = null,
     onOpenFromUrl: () -> Unit,
     onCopyUrl: () -> Unit,
     onGesture: (FtutterGestureAction) -> Unit
@@ -697,6 +710,7 @@ private fun FtutterCatalogMenu(
                 modifier = Modifier.testTag("ftutter-menu-hidden-ng")
             )
             DropdownMenuItem(text = { Text("URLから開く") }, onClick = { open = false; onOpenFromUrl() })
+            if (onOrbNg != null) DropdownMenuItem(text = { Text("ORB画像NGの管理") }, onClick = { open = false; onOrbNg() })
             DropdownMenuItem(text = { Text("URLをコピー") }, onClick = { open = false; onCopyUrl() })
             DropdownMenuItem(text = { Text("ジェスチャーの操作を選ぶ") }, onClick = { open = false; gestureMenu = true },
                 modifier = Modifier.testTag("ftutter-catalog-menu-gesture-actions"))
@@ -720,7 +734,8 @@ private fun FtutterCatalogGrid(
     onRefresh: (fromBottom: Boolean) -> Unit,
     onOpen: (CatalogItem) -> Unit,
     onZoom: (CatalogItem?) -> Unit,
-    onThumbMenu: (CatalogItem) -> Unit
+    onThumbMenu: (CatalogItem) -> Unit,
+    orb: FtutterOrbCatalogState
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val landscape = maxWidth > maxHeight
@@ -738,9 +753,11 @@ private fun FtutterCatalogGrid(
                 readCount = readCounts[ftutterCanonicalThreadUrl(item.threadUrl)],
                 pickupWord = pickupWords[item.threadUrl],
                 targetSizePx = cellPx,
-                onOpen = onOpen,
-                onZoom = onZoom,
-                onThumbMenu = onThumbMenu
+                onOpen = { if (orb.verdict(it) == FtutterOrbVerdict.CLEAR) onOpen(it) },
+                onZoom = { if (it == null || orb.verdict(it) == FtutterOrbVerdict.CLEAR) onZoom(it) },
+                onThumbMenu = onThumbMenu,
+                imageVerdict = orb.verdict(item),
+                imageNgAvailable = orb.available
             )
         }
         val blur = if (zoomedActive) Modifier.blur(10.dp) else Modifier
@@ -812,7 +829,9 @@ private fun FtutterCatalogCell(
     targetSizePx: Int,
     onOpen: (CatalogItem) -> Unit,
     onZoom: (CatalogItem?) -> Unit,
-    onThumbMenu: (CatalogItem) -> Unit
+    onThumbMenu: (CatalogItem) -> Unit,
+    imageVerdict: FtutterOrbVerdict?,
+    imageNgAvailable: Boolean
 ) {
     val colors = LocalFtutterColors.current
     val numbers = ftutterCatalogNumbers(item, history, readCount)
@@ -863,7 +882,7 @@ private fun FtutterCatalogCell(
         if (settings.numberPosition == FtutterNumberPosition.ABOVE) numbersRow()
         val aspect = if (settings.sameHeight) 1f else ftutterThumbAspectRatio(item.thumbnailWidth, item.thumbnailHeight, settings)
         Box(Modifier.fillMaxWidth().aspectRatio(aspect)) {
-            FtutterThumbnail(
+            if (imageVerdict == FtutterOrbVerdict.CLEAR) FtutterThumbnail(
                 thumbnailUrl = item.thumbnailUrl,
                 fullImageUrl = item.fullImageUrl,
                 quality = settings.highRes.ordinal, catalog = true,
@@ -871,6 +890,13 @@ private fun FtutterCatalogCell(
                 contentDescription = title,
                 modifier = Modifier.fillMaxSize().alpha(imageAlpha)
             )
+            else Text(if (imageVerdict == FtutterOrbVerdict.ERROR) "判定失敗\n更新で再試行" else "画像NG判定中…",
+                color = colors.text, modifier = Modifier.align(Alignment.Center).padding(4.dp), fontSize = 12.sp)
+            if (imageNgAvailable) IconButton(onClick = { onThumbMenu(item) },
+                modifier = Modifier.align(Alignment.BottomStart).background(colors.background.copy(alpha = .8f))
+                    .testTag("ftutter-catalog-image-actions")) {
+                Icon(Icons.Rounded.MoreVert, contentDescription = "スレ画の操作・画像NG", tint = colors.text)
+            }
             if (settings.numberPosition == FtutterNumberPosition.OVERLAY) {
                 unread(Modifier.align(Alignment.TopStart))
                 badge(Modifier.align(Alignment.BottomEnd))
@@ -929,7 +955,8 @@ private fun FtutterCatalogZoom(item: CatalogItem, settings: FtutterCatalogSettin
 }
 
 @Composable
-internal fun FtutterThumbDialog(hasHistory: Boolean, onDismiss: () -> Unit, onAction: (FtutterThumbAction) -> Unit) {
+internal fun FtutterThumbDialog(hasHistory: Boolean, onDismiss: () -> Unit,
+    onImageNg: (() -> Unit)? = null, onAction: (FtutterThumbAction) -> Unit) {
     FutachaAppLockAwareWindow { AlertDialog(
         onDismissRequest = onDismiss,
         text = {
@@ -954,6 +981,9 @@ internal fun FtutterThumbDialog(hasHistory: Boolean, onDismiss: () -> Unit, onAc
                         )
                         Text(action.label, modifier = Modifier.padding(start = 16.dp).alpha(if (enabled) 1f else 0.38f))
                     }
+                }
+                if (onImageNg != null) TextButton(onClick = onImageNg, modifier = Modifier.testTag("ftutter-thumb-image-ng")) {
+                    Text("ORB画像NGに登録（加工違いも非表示）")
                 }
             }
         },

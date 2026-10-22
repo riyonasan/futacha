@@ -34,6 +34,7 @@ else()
     add_library(futacha_tracking_bridge STATIC FutachaTracking.cpp)
 endif()
 target_link_libraries(futacha_tracking_bridge PRIVATE opencv_video opencv_geometry opencv_features)
+target_sources(futacha_tracking_bridge PRIVATE FutachaOrb.cpp)
 target_include_directories(futacha_tracking_bridge PRIVATE
     "${OPENCV_SOURCE}/modules/core/include" "${OPENCV_SOURCE}/modules/imgproc/include"
     "${OPENCV_SOURCE}/modules/features/include" "${OPENCV_SOURCE}/modules/geometry/include"
