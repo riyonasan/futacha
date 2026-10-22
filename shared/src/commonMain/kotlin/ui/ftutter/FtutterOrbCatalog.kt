@@ -87,7 +87,7 @@ internal fun rememberFtutterOrbCatalog(
                     require(ftutterOrbFeatureCount(features) >= 8) { "この画像にはORBで識別できる特徴が足りません" }
                     state.rules = requireNotNull(store).add(FtutterOrbRule(url, if (localOnly) board else "*", memo, Base64.encode(features)))
                     state.target = null
-                    currentNotice("ORB画像NGに登録しました")
+                    currentNotice("ORB画像NGに追加しました")
                 } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
                     kotlinx.coroutines.currentCoroutineContext().ensureActive()
                     error = "画像の取得が時間切れになりました。再試行してください"

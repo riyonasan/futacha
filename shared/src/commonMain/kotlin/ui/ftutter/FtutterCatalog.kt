@@ -993,8 +993,13 @@ internal fun FtutterThumbDialog(hasHistory: Boolean, onDismiss: () -> Unit,
                         Text(action.label, modifier = Modifier.padding(start = 16.dp).alpha(if (enabled) 1f else 0.38f))
                     }
                 }
-                if (onImageNg != null) TextButton(onClick = onImageNg, modifier = Modifier.testTag("ftutter-thumb-image-ng")) {
-                    Text("ORB画像NGに登録（加工違いも非表示）")
+                if (onImageNg != null) Row(
+                    Modifier.fillMaxWidth().clickable(onClick = onImageNg).padding(vertical = 10.dp)
+                        .testTag("ftutter-thumb-image-ng"),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Rounded.Block, contentDescription = null)
+                    Text("ORB画像NGに追加", modifier = Modifier.padding(start = 16.dp))
                 }
             }
         },
