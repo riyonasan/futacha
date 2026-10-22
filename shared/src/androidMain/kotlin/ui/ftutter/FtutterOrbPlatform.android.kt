@@ -28,7 +28,7 @@ internal actual suspend fun ftutterExtractOrb(bytes: ByteArray): ByteArray = wit
             // OpenCV's integer RGB -> gray conversion, including rounding.
             (((p shr 16 and 255) * 4899 + (p shr 8 and 255) * 9617 + (p and 255) * 1868 + 8192) shr 14).toByte()
         }
-        try { requireNotNull(TrackingNative.extractOrb(gray, bitmap.width, bitmap.height)) { "ORBの特徴抽出に失敗しました" } }
+        try { requireNotNull(TrackingNative.extractOrb(gray, bitmap.width, bitmap.height)) { "画像の特徴を読み取れません" } }
         catch (failure: LinkageError) { throw IllegalStateException("画像NGライブラリを読み込めません", failure) }
     } finally { bitmap.recycle() }
 }

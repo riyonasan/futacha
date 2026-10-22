@@ -59,7 +59,7 @@ internal class FtutterOrbNgStore(
     private suspend fun edit(change: (List<FtutterOrbRule>) -> List<FtutterOrbRule>): List<FtutterOrbRule> = mutex.withLock {
         val old = loaded ?: readRules()
         val next = change(old)
-        require(next.size <= 64) { "ORB画像NGは64枚まで登録できます。不要な登録を削除してください" }
+        require(next.size <= 64) { "類似画像NGは64枚まで追加できます。不要な画像を削除してください" }
         val payload = withContext(AppDispatchers.parsing) {
             next.forEach(::validateFtutterOrbRule)
             Json.encodeToString(next)
@@ -88,14 +88,14 @@ private fun validateFtutterOrbRule(rule: FtutterOrbRule) {
 }
 
 internal fun ftutterOrbFeatureCount(bytes: ByteArray): Int {
-    require(bytes.size in 16..40016 && bytes.copyOfRange(0, 4).decodeToString() == "ORB1") { "ORBの形式が不正です" }
+    require(bytes.size in 16..40016 && bytes.copyOfRange(0, 4).decodeToString() == "ORB1") { "画像NGデータの形式が不正です" }
     fun intAt(offset: Int) = (0..3).fold(0) { n, i -> n or ((bytes[offset + i].toInt() and 255) shl (8 * i)) }
     val width = intAt(4); val height = intAt(8); val count = intAt(12)
     require(width > 0 && height > 0 && width.toLong() * height <= 4_194_304 &&
-        count in 0..1000 && bytes.size == 16 + count * 40) { "ORBの特徴量が不正です" }
+        count in 0..1000 && bytes.size == 16 + count * 40) { "画像NGデータが不正です" }
     repeat(count) { i ->
         val x = Float.fromBits(intAt(16 + i * 40)); val y = Float.fromBits(intAt(20 + i * 40))
-        require(x.isFinite() && y.isFinite() && x >= 0 && y >= 0 && x < width && y < height) { "ORBの座標が不正です" }
+        require(x.isFinite() && y.isFinite() && x >= 0 && y >= 0 && x < width && y < height) { "画像NGデータが不正です" }
     }
     return count
 }

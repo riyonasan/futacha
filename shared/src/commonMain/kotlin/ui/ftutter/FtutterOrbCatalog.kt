@@ -26,8 +26,10 @@ internal fun rememberFtutterOrbCatalog(
     visibleThreadUrls: () -> Set<String>
 ): FtutterOrbCatalogState {
     val platformContext = LocalPlatformContext.current
-    val https = LocalFtutterPreferences.current.ftutterBool(FtutterKeys.USE_HTTPS, false)
-    val showBeforeCheck = LocalFtutterPreferences.current.ftutterBool(FtutterKeys.ORB_SHOW_BEFORE_CHECK, false)
+    val preferences = LocalFtutterPreferences.current
+    val https = preferences.ftutterBool(FtutterKeys.USE_HTTPS, false)
+    val showBeforeCheck = preferences.ftutterBool(FtutterKeys.ORB_SHOW_BEFORE_CHECK, false)
+    val workers = preferences.ftutterInt(FtutterKeys.ORB_WORKERS, 1, 1..3)
     val path = remember(platformContext) { ftutterOrbStoragePath(platformContext) }
     val available = ftutterOrbAvailable && path != null
     val state = remember(board, path, available, https, cache) {
@@ -49,7 +51,7 @@ internal fun rememberFtutterOrbCatalog(
     }
     val rules = state.rules
     val client = services?.httpClient
-    LaunchedEffect(state, rules, items, refreshTick, client, showBeforeCheck) {
+    LaunchedEffect(state, rules, items, refreshTick, client, workers) {
         if (!available || rules == null) return@LaunchedEffect
         if (state.checkedRules != rules) {
             state.verdicts = emptyMap()
@@ -78,7 +80,7 @@ internal fun rememberFtutterOrbCatalog(
                 currentNotice("画像NGを判定できない画像は伏せています。更新で再試行できます")
             }
         }, preferredUrls = { currentVisibleThreadUrls().mapNotNull { urlByThread[it] }.toSet() },
-            workers = if (showBeforeCheck) 1 else 3)
+            workers = workers)
     }
 
     var busy by remember { mutableStateOf(false) }
@@ -91,10 +93,10 @@ internal fun rememberFtutterOrbCatalog(
             scope.launch {
                 try {
                     val features = cache.get(checkNotNull(client) { "通信機能を初期化できません" }, url)
-                    require(ftutterOrbFeatureCount(features) >= 8) { "この画像にはORBで識別できる特徴が足りません" }
+                    require(ftutterOrbFeatureCount(features) >= 8) { "この画像は特徴が少ないため追加できません" }
                     state.rules = requireNotNull(store).add(FtutterOrbRule(url, if (localOnly) board else "*", memo, Base64.encode(features)))
                     state.target = null
-                    currentNotice("ORB画像NGに追加しました")
+                    currentNotice("類似画像NGに追加しました")
                 } catch (timeout: kotlinx.coroutines.TimeoutCancellationException) {
                     kotlinx.coroutines.currentCoroutineContext().ensureActive()
                     error = "画像の取得が時間切れになりました。再試行してください"
@@ -106,12 +108,14 @@ internal fun rememberFtutterOrbCatalog(
     }
     if (state.managing && !busy) FutachaAppLockAwareWindow { AlertDialog(
         onDismissRequest = { state.managing = false },
-        title = { Text("カタログのORB画像NG") },
+        title = { Text("類似画像NG") },
         text = { Column(Modifier.verticalScroll(rememberScrollState())) {
-            Text("登録した画像の加工違いを照合します。同じ顔などを共有する別画像も隠れる場合があります。スレッド内の画像には適用しません。")
-            FtutterCheckSetting("ORB判定前に画像を表示する", FtutterKeys.ORB_SHOW_BEFORE_CHECK, false,
-                LocalFtutterPreferences.current, savePreference,
-                note = "カタログの表示を優先し、ORBを1件ずつ処理します。NG画像が判定まで一時的に表示されます。判定に失敗した画像は伏せます。")
+            Text("登録画像と、その加工違いをカタログから隠します。")
+            Text("似た別の画像も隠れる場合があります。")
+            FtutterCheckSetting("画像を先に表示する", FtutterKeys.ORB_SHOW_BEFORE_CHECK, false,
+                preferences, savePreference, note = "NG画像が一時的に表示されます。")
+            FtutterSliderSetting("同時に判定する数", FtutterKeys.ORB_WORKERS, 1.0, 3.0, 1.0, 1.0,
+                preferences, savePreference, note = "数を増やすと処理中の負荷も増えます。")
             state.loadError?.let { Text(it) }
             if (state.active.isEmpty()) Text("この板に適用される登録はありません")
             state.active.asReversed().forEach { rule ->

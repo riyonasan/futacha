@@ -357,7 +357,7 @@ internal fun FtutterCatalogScreen(
     LaunchedEffect(computedNg, imageNgRemoved) { computedNg?.let {
         holder.ngRemoved = (it.ngRemoved + imageNgRemoved).distinctBy { item -> item.threadUrl }
         holder.ngReasons = holder.ngReasons.filterKeys { url -> it.ngRemoved.any { item -> item.threadUrl == url } } +
-            imageNgRemoved.associate { item -> item.threadUrl to "ORB画像NG" }
+            imageNgRemoved.associate { item -> item.threadUrl to "類似画像NG" }
     } }
     val viewedFirstKey = com.valoser.futacha.shared.ui.board.viewedThreadFirstKey(board.url)
     val viewedFirstEnabled = preferences[viewedFirstKey] == "ON"
@@ -717,7 +717,7 @@ private fun FtutterCatalogMenu(
                 modifier = Modifier.testTag("ftutter-menu-hidden-ng")
             )
             DropdownMenuItem(text = { Text("URLから開く") }, onClick = { open = false; onOpenFromUrl() })
-            if (onOrbNg != null) DropdownMenuItem(text = { Text("ORB画像NGの管理") }, onClick = { open = false; onOrbNg() })
+            if (onOrbNg != null) DropdownMenuItem(text = { Text("類似画像NGの管理") }, onClick = { open = false; onOrbNg() })
             DropdownMenuItem(text = { Text("URLをコピー") }, onClick = { open = false; onCopyUrl() })
             DropdownMenuItem(text = { Text("ジェスチャーの操作を選ぶ") }, onClick = { open = false; gestureMenu = true },
                 modifier = Modifier.testTag("ftutter-catalog-menu-gesture-actions"))
@@ -1001,7 +1001,7 @@ internal fun FtutterThumbDialog(hasHistory: Boolean, onDismiss: () -> Unit,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(Icons.Rounded.Block, contentDescription = null)
-                    Text("ORB画像NGに追加", modifier = Modifier.padding(start = 16.dp))
+                    Text("類似画像NGに追加", modifier = Modifier.padding(start = 16.dp))
                 }
             }
         },

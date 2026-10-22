@@ -161,6 +161,36 @@ class FtutterOrbNgTest {
         } finally { client.close() }
     }
 
+    @Test fun twoWorkersProcessOnlyTwoImagesAtOnce() = runBlocking {
+        val gate = CompletableDeferred<Unit>()
+        val bothStarted = CompletableDeferred<Unit>()
+        val lock = Mutex()
+        var active = 0
+        var peak = 0
+        var results = 0
+        val client = HttpClient(MockEngine {
+            lock.withLock {
+                active++
+                peak = maxOf(peak, active)
+                if (active == 2) bothStarted.complete(Unit)
+            }
+            try { gate.await(); respond(byteArrayOf(1)) }
+            finally { lock.withLock { active-- } }
+        })
+        val job = launch {
+            ftutterCheckOrb((0..5).map { "https://example.test/$it" }, listOf(rule()),
+                FtutterOrbCache { payload() }, client, { _, _ -> results++ },
+                match = { _, _ -> false }, workers = 2)
+        }
+        try {
+            withTimeout(2_000) { bothStarted.await() }
+            gate.complete(Unit)
+            withTimeout(2_000) { job.join() }
+            assertEquals(2, lock.withLock { peak })
+            assertEquals(6, results)
+        } finally { job.cancelAndJoin(); client.close() }
+    }
+
     @Test fun usesThumbAndRespectsHttpsPreference() {
         val state = FtutterOrbCatalogState("img.2chan.net/b/", true, true)
         assertEquals("https://img.2chan.net/b/thumb/1s.jpg", state.url(item("http://img.2chan.net/b/cat/1s.jpg")))
