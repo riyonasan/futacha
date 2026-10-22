@@ -513,7 +513,7 @@ class HttpBoardApiTest {
             assertEquals("catset", form["mode"])
             assertEquals("5", form["cx"])
             assertEquals("60", form["cy"])
-            assertEquals("16", form["cl"])
+            assertEquals("256", form["cl"])
             assertEquals("0", form["cm"])
             assertEquals("0", form["ci"])
             assertEquals("on", form["vh"])
@@ -539,7 +539,7 @@ class HttpBoardApiTest {
             val form = decodeFormBody(capturedRequest)
             assertEquals("5", form["cx"])
             assertEquals("100", form["cy"])
-            assertEquals("16", form["cl"])
+            assertEquals("256", form["cl"])
         } finally {
             api.close()
         }

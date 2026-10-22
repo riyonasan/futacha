@@ -148,7 +148,7 @@ class DefaultBoardRepositoryTest {
         )
         storage.addCookie(
             io.ktor.http.Url(boardUrl),
-            io.ktor.http.Cookie(name = "cxyl", value = "5x60x16x0x1", domain = "dec.2chan.net", path = "/b/")
+            io.ktor.http.Cookie(name = "cxyl", value = "5x60x256x0x1", domain = "dec.2chan.net", path = "/b/")
         )
         val api = FakeBoardApi()
         val repository = DefaultBoardRepository(
@@ -160,6 +160,31 @@ class DefaultBoardRepositoryTest {
         repository.getCatalog(boardUrl, CatalogMode.Catalog)
 
         assertEquals(0, api.fetchCatalogSetupCalls)
+        assertEquals(1, api.fetchCatalogCalls)
+    }
+
+    @Test
+    fun getCatalog_replacesPreviousShortTitleCookieBeforeFetching() = runBlocking {
+        val boardUrl = "https://dec.2chan.net/b/"
+        val storage = PersistentCookieStorage(InMemoryFileSystem(), STORAGE_PATH)
+        storage.addCookie(
+            io.ktor.http.Url(boardUrl),
+            io.ktor.http.Cookie(name = "posttime", value = "1782122070707", domain = ".2chan.net", path = "/")
+        )
+        storage.addCookie(
+            io.ktor.http.Url(boardUrl),
+            io.ktor.http.Cookie(name = "cxyl", value = "5x60x16x0x1", domain = "dec.2chan.net", path = "/b/")
+        )
+        val api = FakeBoardApi()
+        val repository = DefaultBoardRepository(
+            api = api, parser = FakeHtmlParser(), cookieRepository = CookieRepository(storage)
+        )
+
+        repository.getCatalog(boardUrl, CatalogMode.Catalog)
+
+        assertEquals(1, api.fetchCatalogSetupCalls)
+        assertEquals(256, api.fetchCatalogSetupSettings.single().titleLines)
+        assertEquals("5x60x256x0x1", storage.listCookies().first { it.name == "cxyl" }.value)
         assertEquals(1, api.fetchCatalogCalls)
     }
 
@@ -190,7 +215,7 @@ class DefaultBoardRepositoryTest {
         val storage = PersistentCookieStorage(InMemoryFileSystem(), STORAGE_PATH)
         storage.addCookie(
             io.ktor.http.Url(boardUrl),
-            io.ktor.http.Cookie(name = "cxyl", value = "5x60x16x0x1", domain = "dec.2chan.net", path = "/b/")
+            io.ktor.http.Cookie(name = "cxyl", value = "5x60x256x0x1", domain = "dec.2chan.net", path = "/b/")
         )
         val api = FakeBoardApi(
             onFetchCatalogSetup = {
@@ -200,7 +225,7 @@ class DefaultBoardRepositoryTest {
                 )
                 storage.addCookie(
                     io.ktor.http.Url(boardUrl),
-                    io.ktor.http.Cookie(name = "cxyl", value = "5x60x16x0x1", domain = "dec.2chan.net", path = "/b/")
+                    io.ktor.http.Cookie(name = "cxyl", value = "5x60x256x0x1", domain = "dec.2chan.net", path = "/b/")
                 )
             }
         )
@@ -228,7 +253,7 @@ class DefaultBoardRepositoryTest {
                 )
                 storage.addCookie(
                     io.ktor.http.Url(boardUrl),
-                    io.ktor.http.Cookie(name = "cxyl", value = "5x60x16x0x1", domain = "dec.2chan.net", path = "/b/")
+                    io.ktor.http.Cookie(name = "cxyl", value = "5x60x256x0x1", domain = "dec.2chan.net", path = "/b/")
                 )
             }
         )
@@ -348,7 +373,7 @@ class DefaultBoardRepositoryTest {
                 )
                 storage.addCookie(
                     io.ktor.http.Url(boardUrl),
-                    io.ktor.http.Cookie(name = "cxyl", value = "5x60x16x0x1", domain = "dec.2chan.net", path = "/b/")
+                    io.ktor.http.Cookie(name = "cxyl", value = "5x60x256x0x1", domain = "dec.2chan.net", path = "/b/")
                 )
             }
         )
@@ -415,7 +440,7 @@ class DefaultBoardRepositoryTest {
                 )
                 storage.addCookie(
                     io.ktor.http.Url(boardUrl),
-                    io.ktor.http.Cookie(name = "cxyl", value = "5x60x16x0x1", domain = "dec.2chan.net", path = "/b/")
+                    io.ktor.http.Cookie(name = "cxyl", value = "5x60x256x0x1", domain = "dec.2chan.net", path = "/b/")
                 )
             }
         )
