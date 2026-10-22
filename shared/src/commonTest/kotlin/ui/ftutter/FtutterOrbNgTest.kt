@@ -8,6 +8,8 @@ import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlin.io.encoding.Base64
 import kotlin.test.*
 
@@ -238,5 +240,115 @@ class FtutterOrbNgTest {
             job.cancelAndJoin()
             client.close()
         }
+    }
+
+    @Test fun reopeningAndReorderingWholeCatalogDoesNotFetchExtractOrMatchAgain() = runBlocking {
+        val requests = MutableStateFlow(0)
+        val extractions = MutableStateFlow(0)
+        val matches = MutableStateFlow(0)
+        val client = HttpClient(MockEngine { requests.update { it + 1 }; respond(byteArrayOf(1)) })
+        val cache = FtutterOrbCache { extractions.update { it + 1 }; payload() }
+        val rules = listOf(rule())
+        val urls = (0 until 300).map { "https://example.test/$it" }
+        fun screen() = FtutterOrbCatalogState("img.2chan.net/b/", true).apply {
+            this.rules = rules; checkedRules = rules
+        }
+        suspend fun scan(state: FtutterOrbCatalogState, order: List<String>) {
+            ftutterCheckOrb(order, rules, cache, client,
+                { url, verdict -> state.verdicts = state.verdicts + (url to verdict) },
+                match = { _, _ -> matches.update { it + 1 }; false })
+        }
+        try {
+            scan(screen(), urls)
+            val reopened = screen()
+            scan(reopened, urls.asReversed())
+            scan(screen(), urls)
+            assertEquals(300, requests.value)
+            assertEquals(300, extractions.value)
+            assertEquals(300, matches.value)
+            assertEquals(FtutterOrbVerdict.CLEAR, reopened.verdict(item(urls.first())))
+            assertEquals(FtutterOrbVerdict.CLEAR, reopened.verdict(item(urls.last())))
+        } finally { client.close() }
+    }
+
+    @Test fun verdictsAreInvalidatedByExactApplicableRulesAndTransport() = runBlocking {
+        val client = HttpClient(MockEngine { respond(byteArrayOf(1)) })
+        val cache = FtutterOrbCache { payload() }
+        val url = "https://example.test/image"
+        val first = listOf(rule())
+        val changed = first + rule("https://example.test/new-reference")
+        var matches = 0
+        try {
+            ftutterCheckOrb(listOf(url, rule().url), first, cache, client, { _, _ -> },
+                match = { _, _ -> matches++; false })
+            assertEquals(FtutterOrbVerdict.CLEAR, cache.verdict(url, first))
+            assertEquals(FtutterOrbVerdict.HIDDEN, cache.verdict(rule().url, first))
+            assertNull(cache.verdict(url, changed))
+            assertNull(cache.verdict(url, listOf(rule(board = "other"))))
+            assertNull(cache.verdict(url, listOf(rule().copy(features = Base64.encode(payload(9))))))
+            assertNull(cache.verdict(url.replace("https://", "http://"), first))
+            ftutterCheckOrb(listOf(url), changed, cache, client, { _, _ -> },
+                match = { _, _ -> matches++; true })
+            assertEquals(2, matches)
+            assertEquals(FtutterOrbVerdict.HIDDEN, cache.verdict(url, changed))
+            assertNull(cache.verdict(url, first))
+        } finally { client.close() }
+    }
+
+    @Test fun completedVerdictsSurviveLeavingBeforeScanFinishes() = runBlocking {
+        val requests = MutableStateFlow(0)
+        val completed = CompletableDeferred<Unit>()
+        val client = HttpClient(MockEngine { request ->
+            requests.update { it + 1 }
+            if (request.url.encodedPath == "/wait") awaitCancellation()
+            respond(byteArrayOf(1))
+        })
+        val cache = FtutterOrbCache { payload() }
+        val rules = listOf(rule())
+        val url = "https://example.test/ready"
+        val job = launch {
+            ftutterCheckOrb(listOf(url, "https://example.test/wait"), rules, cache, client,
+                { name, _ -> if (name == url) completed.complete(Unit) }, match = { _, _ -> false })
+        }
+        try {
+            withTimeout(2_000) { completed.await() }
+            job.cancelAndJoin()
+            val before = requests.value
+            ftutterCheckOrb(listOf(url), rules, cache, client, { _, _ -> },
+                match = { _, _ -> error("Completed result should survive leaving") })
+            assertEquals(before, requests.value)
+            assertEquals(FtutterOrbVerdict.CLEAR, cache.verdict(url, rules))
+        } finally { job.cancelAndJoin(); client.close() }
+    }
+
+    @Test fun failedVerdictsAreRetriedOnNextVisit() = runBlocking {
+        var requests = 0
+        var fail = true
+        val client = HttpClient(MockEngine {
+            requests++
+            if (fail) respond("", HttpStatusCode.NotFound) else respond(byteArrayOf(1))
+        })
+        val cache = FtutterOrbCache { payload() }
+        val rules = listOf(rule())
+        val url = "https://example.test/retry"
+        try {
+            ftutterCheckOrb(listOf(url), rules, cache, client, { _, _ -> }, match = { _, _ -> false })
+            assertNull(cache.verdict(url, rules))
+            fail = false
+            ftutterCheckOrb(listOf(url), rules, cache, client, { _, _ -> }, match = { _, _ -> false })
+            assertEquals(2, requests)
+            assertEquals(FtutterOrbVerdict.CLEAR, cache.verdict(url, rules))
+        } finally { client.close() }
+    }
+
+    @Test fun verdictCacheIsBoundedAndRetainsRecentlyUsedResults() {
+        val cache = FtutterOrbCache { payload() }
+        val rules = listOf(rule())
+        for (i in 0 until 4096) cache.rememberVerdict("https://example.test/$i", rules, FtutterOrbVerdict.CLEAR)
+        assertNotNull(cache.verdict("https://example.test/0", rules))
+        cache.rememberVerdict("https://example.test/4096", rules, FtutterOrbVerdict.HIDDEN)
+        assertNull(cache.verdict("https://example.test/1", rules))
+        assertEquals(FtutterOrbVerdict.CLEAR, cache.verdict("https://example.test/0", rules))
+        assertEquals(FtutterOrbVerdict.HIDDEN, cache.verdict("https://example.test/4096", rules))
     }
 }

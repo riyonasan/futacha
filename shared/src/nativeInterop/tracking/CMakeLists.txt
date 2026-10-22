@@ -12,6 +12,13 @@ foreach(option BUILD_SHARED_LIBS BUILD_TESTS BUILD_PERF_TESTS BUILD_EXAMPLES BUI
     set(${option} OFF CACHE BOOL "" FORCE)
 endforeach()
 add_subdirectory("${OPENCV_SOURCE}" opencv)
+if(ANDROID)
+    # Keep the trial app debuggable without running ORB's shared OpenCV dependencies at -O0.
+    foreach(module core imgproc features geometry flann)
+        target_compile_options(opencv_${module} PRIVATE "$<$<CONFIG:Debug>:-O2>")
+    endforeach()
+    set_property(SOURCE FutachaOrb.cpp APPEND PROPERTY COMPILE_OPTIONS "$<$<CONFIG:Debug>:-O2>")
+endif()
 if(WIN32)
     # OpenCV geometry uses M_PI; the Windows UCRT exposes it only with this define.
     target_compile_definitions(opencv_geometry PRIVATE _USE_MATH_DEFINES)

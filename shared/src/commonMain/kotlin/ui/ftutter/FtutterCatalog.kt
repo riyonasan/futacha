@@ -748,6 +748,7 @@ private fun FtutterCatalogGrid(
         val density = LocalDensity.current
         val cellPx = with(density) { (maxWidth / columns).toPx() }.toInt().coerceAtLeast(1)
         val cell: @Composable (CatalogItem) -> Unit = { item ->
+            val imageUrl = if (orb.active.isNotEmpty()) orb.url(item) else null
             FtutterCatalogCell(
                 item = item,
                 board = board,
@@ -762,7 +763,8 @@ private fun FtutterCatalogGrid(
                 onZoom = { if (it == null || orb.verdict(it) == FtutterOrbVerdict.CLEAR) onZoom(it) },
                 onThumbMenu = onThumbMenu,
                 imageVerdict = orb.verdict(item),
-                imageBytes = if (orb.active.isNotEmpty()) orb.url(item)?.let(holder.orbCache::image) else null
+                imageBytes = imageUrl?.let(holder.orbCache::image),
+                imageCacheKey = imageUrl?.let { "ftutter-orb:$it" }
             )
         }
         val blur = if (zoomedActive) Modifier.blur(10.dp) else Modifier
@@ -836,7 +838,8 @@ private fun FtutterCatalogCell(
     onZoom: (CatalogItem?) -> Unit,
     onThumbMenu: (CatalogItem) -> Unit,
     imageVerdict: FtutterOrbVerdict?,
-    imageBytes: ByteArray?
+    imageBytes: ByteArray?,
+    imageCacheKey: String?
 ) {
     val colors = LocalFtutterColors.current
     val numbers = ftutterCatalogNumbers(item, history, readCount)
@@ -893,6 +896,7 @@ private fun FtutterCatalogCell(
                 quality = settings.highRes.ordinal, catalog = true,
                 targetSizePx = targetSizePx,
                 encodedImage = imageBytes,
+                memoryCacheKey = imageCacheKey,
                 contentDescription = title,
                 modifier = Modifier.fillMaxSize().alpha(imageAlpha)
             )

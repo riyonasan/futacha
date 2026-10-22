@@ -102,11 +102,28 @@ internal fun ftutterOrbFeatureCount(bytes: ByteArray): Int {
 
 /** Bounded per-screen feature cache. Rules persist, candidates can always be downloaded again. */
 internal class FtutterOrbCache(private val extract: suspend (ByteArray) -> ByteArray = ::ftutterExtractOrb) {
+    private data class Verdict(val rules: List<FtutterOrbRule>, val result: FtutterOrbVerdict)
+    private val verdicts = LinkedHashMap<String, Verdict>()
     private val features = LinkedHashMap<String, ByteArray>()
     private val images = LinkedHashMap<String, ByteArray>()
     private var imageBytes = 0
 
     fun image(url: String): ByteArray? = images.remove(url)?.also { images[url] = it }
+
+    fun verdict(url: String, rules: List<FtutterOrbRule>): FtutterOrbVerdict? {
+        val cached = verdicts[url]?.takeIf { it.rules == rules } ?: return null
+        verdicts.remove(url)
+        verdicts[url] = cached
+        return cached.result
+    }
+
+    fun rememberVerdict(url: String, rules: List<FtutterOrbRule>, result: FtutterOrbVerdict) {
+        if (result == FtutterOrbVerdict.ERROR) return
+        verdicts.remove(url)
+        verdicts[url] = Verdict(rules.toList(), result)
+        // Cover whole catalogs independently of the much larger feature/image payloads.
+        while (verdicts.size > 4096) verdicts.remove(verdicts.keys.first())
+    }
 
     suspend fun get(client: HttpClient, url: String): ByteArray {
         features[url]?.let { return it }
@@ -148,7 +165,7 @@ internal suspend fun ftutterCheckOrb(
                         (pending.firstOrNull { it in preferred } ?: pending.firstOrNull())?.also { pending.remove(it) }
                     } ?: break
                     currentCoroutineContext().ensureActive()
-                    val verdict = try {
+                    val verdict = cache.verdict(url, rules) ?: try {
                         if (seeds.any { it.first == url }) FtutterOrbVerdict.HIDDEN else {
                             val candidate = cache.get(client, url)
                             val hidden = withContext(AppDispatchers.parsing) {
@@ -164,6 +181,7 @@ internal suspend fun ftutterCheckOrb(
                         FtutterOrbVerdict.ERROR
                     } catch (cancelled: CancellationException) { throw cancelled }
                     catch (_: Exception) { FtutterOrbVerdict.ERROR }
+                    cache.rememberVerdict(url, rules, verdict)
                     onResult(url, verdict)
                 }
             }

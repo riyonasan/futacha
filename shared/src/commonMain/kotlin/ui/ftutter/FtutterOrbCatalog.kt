@@ -50,17 +50,22 @@ internal fun rememberFtutterOrbCatalog(
             state.verdicts = emptyMap()
             state.checkedRules = rules
         }
-        if (state.active.isEmpty()) return@LaunchedEffect
+        val active = state.active
+        if (active.isEmpty()) return@LaunchedEffect
+        val urls = items.mapNotNull(state::url).toSet()
+        val urlByThread = items.associate { it.threadUrl to state.url(it) }
+        state.verdicts = urls.mapNotNull { url ->
+            (cache.verdict(url, active) ?: state.verdicts[url])?.let { url to it }
+        }.toMap()
+        val pending = urls.filter { state.verdicts[it] !in setOf(FtutterOrbVerdict.CLEAR, FtutterOrbVerdict.HIDDEN) }
+        if (pending.isEmpty()) return@LaunchedEffect
         if (client == null) {
             currentNotice("通信機能を初期化できないため、画像NGの判定前の画像を伏せています")
             return@LaunchedEffect
         }
-        val urls = items.mapNotNull(state::url).toSet()
-        val urlByThread = items.associate { it.threadUrl to state.url(it) }
-        state.verdicts = state.verdicts.filterKeys { it in urls }
         var failureNoticed = false
-        ftutterCheckOrb(urls.filter { state.verdicts[it] !in setOf(FtutterOrbVerdict.CLEAR, FtutterOrbVerdict.HIDDEN) },
-            state.active, cache, client, onResult = { url, verdict ->
+        ftutterCheckOrb(pending,
+            active, cache, client, onResult = { url, verdict ->
             state.verdicts = state.verdicts + (url to verdict)
             if (verdict == FtutterOrbVerdict.ERROR && !failureNoticed) {
                 failureNoticed = true
