@@ -6,6 +6,8 @@ import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.io.encoding.Base64
 import kotlin.test.*
 
@@ -154,5 +156,87 @@ class FtutterOrbNgTest {
             job.cancelAndJoin()
             assertTrue(results.isEmpty())
         } finally { client.close() }
+    }
+
+    @Test fun downloadedImagesAreReusedWithinABoundedLruCache() = runBlocking {
+        var requests = 0
+        val body = ByteArray(2 * 1024 * 1024) { 7 }
+        val client = HttpClient(MockEngine { requests++; respond(body) })
+        try {
+            val cache = FtutterOrbCache { payload() }
+            val urls = (0..4).map { "https://example.test/$it" }
+            for (url in urls.take(4)) cache.get(client, url)
+            assertContentEquals(body, cache.image(urls[0]))
+            cache.get(client, urls[4])
+            assertNull(cache.image(urls[1]))
+            assertNotNull(cache.image(urls[0]))
+            assertNotNull(cache.image(urls[4]))
+            cache.get(client, urls[4])
+            assertEquals(5, requests)
+            val invalid = FtutterOrbCache { byteArrayOf() }
+            assertFails { invalid.get(client, urls[0]) }
+            assertNull(invalid.image(urls[0]))
+        } finally { client.close() }
+    }
+
+    @Test fun scrollingChangesPriorityWithoutCancellingActiveRequests() = runBlocking {
+        val urls = (0..8).map { "https://example.test/$it" }
+        val permits = List(3) { CompletableDeferred<Unit>() }
+        val initialStarted = CompletableDeferred<Unit>()
+        val preferredStarted = CompletableDeferred<Unit>()
+        val order = mutableListOf<Int>()
+        val orderLock = Mutex()
+        var preferred = emptySet<String>()
+        val client = HttpClient(MockEngine { request ->
+            val id = request.url.encodedPath.substringAfterLast('/').toInt()
+            if (orderLock.withLock { order += id; order.size } == 3) initialStarted.complete(Unit)
+            if (id < 3) permits[id].await()
+            if (id == 8) preferredStarted.complete(Unit)
+            respond(byteArrayOf(1))
+        })
+        val job = launch {
+            ftutterCheckOrb(urls, listOf(rule()), FtutterOrbCache { payload() }, client,
+                { _, _ -> }, match = { _, _ -> false }, preferredUrls = { preferred })
+        }
+        try {
+            withTimeout(2_000) { initialStarted.await() }
+            preferred = setOf(urls[8])
+            permits[1].complete(Unit)
+            withTimeout(2_000) { preferredStarted.await() }
+            assertEquals(setOf(0, 1, 2), orderLock.withLock { order.take(3).toSet() })
+            assertEquals(8, orderLock.withLock { order[3] })
+        } finally {
+            permits.forEach { it.complete(Unit) }
+            job.cancelAndJoin()
+            client.close()
+        }
+    }
+
+    @Test fun oneSlowImageDoesNotBlockEveryThirdImage() = runBlocking {
+        val wait = CompletableDeferred<Unit>()
+        val othersFinished = CompletableDeferred<Unit>()
+        val results = mutableSetOf<String>()
+        val urls = (0..8).map { "https://example.test/$it" }
+        val client = HttpClient(MockEngine { request ->
+            if (request.url.encodedPath == "/0") wait.await()
+            respond(byteArrayOf(1))
+        })
+        val job = launch {
+            ftutterCheckOrb(urls, listOf(rule()), FtutterOrbCache { payload() }, client,
+                { url, verdict ->
+                    assertEquals(FtutterOrbVerdict.CLEAR, verdict)
+                    results += url
+                    if (results.size == 8) othersFinished.complete(Unit)
+                }, match = { _, _ -> false })
+        }
+        try {
+            withTimeout(2_000) { othersFinished.await() }
+            assertFalse(urls[0] in results)
+            assertEquals(urls.drop(1).toSet(), results)
+        } finally {
+            wait.complete(Unit)
+            job.cancelAndJoin()
+            client.close()
+        }
     }
 }

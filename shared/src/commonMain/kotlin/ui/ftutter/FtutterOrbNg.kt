@@ -103,6 +103,11 @@ internal fun ftutterOrbFeatureCount(bytes: ByteArray): Int {
 /** Bounded per-screen feature cache. Rules persist, candidates can always be downloaded again. */
 internal class FtutterOrbCache(private val extract: suspend (ByteArray) -> ByteArray = ::ftutterExtractOrb) {
     private val features = LinkedHashMap<String, ByteArray>()
+    private val images = LinkedHashMap<String, ByteArray>()
+    private var imageBytes = 0
+
+    fun image(url: String): ByteArray? = images.remove(url)?.also { images[url] = it }
+
     suspend fun get(client: HttpClient, url: String): ByteArray {
         features[url]?.let { return it }
         val bytes = withTimeout(5_000) {
@@ -113,6 +118,12 @@ internal class FtutterOrbCache(private val extract: suspend (ByteArray) -> ByteA
         }
         val result = extract(bytes)
         ftutterOrbFeatureCount(result)
+        images.remove(url)?.let { imageBytes -= it.size }
+        images[url] = bytes
+        imageBytes += bytes.size
+        while (images.size > 256 || imageBytes > 8 * 1024 * 1024) {
+            imageBytes -= images.remove(images.keys.first())!!.size
+        }
         features[url] = result
         while (features.size > 256) features.remove(features.keys.first())
         return result
@@ -122,15 +133,20 @@ internal class FtutterOrbCache(private val extract: suspend (ByteArray) -> ByteA
 internal suspend fun ftutterCheckOrb(
     urls: List<String>, rules: List<FtutterOrbRule>, cache: FtutterOrbCache, client: HttpClient,
     onResult: (String, FtutterOrbVerdict) -> Unit,
-    match: (ByteArray, ByteArray) -> Boolean = ::ftutterMatchOrb
+    match: (ByteArray, ByteArray) -> Boolean = ::ftutterMatchOrb,
+    preferredUrls: () -> Set<String> = { emptySet() }
 ) {
     val seeds = rules.map { it.url to Base64.decode(it.features) }
-    val distinct = urls.distinct()
+    val pending = urls.toMutableSet()
+    val queue = Mutex()
     coroutineScope {
-        repeat(3) { worker ->
+        repeat(3) {
             launch {
-                for (index in worker until distinct.size step 3) {
-                    val url = distinct[index]
+                while (true) {
+                    val url = queue.withLock {
+                        val preferred = preferredUrls()
+                        (pending.firstOrNull { it in preferred } ?: pending.firstOrNull())?.also { pending.remove(it) }
+                    } ?: break
                     currentCoroutineContext().ensureActive()
                     val verdict = try {
                         if (seeds.any { it.first == url }) FtutterOrbVerdict.HIDDEN else {

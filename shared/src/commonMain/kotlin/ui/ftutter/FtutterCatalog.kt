@@ -336,7 +336,11 @@ internal fun FtutterCatalogScreen(
     val ngResult = computedNg ?: lastNgResult?.takeIf { it.first == key }?.second
         ?: FtutterCatalogNgResult(emptyList(), emptyMap(), emptyList())
     val orb = rememberFtutterOrbCatalog(ftutterBoardBaseUrl(board.url).substringAfter("://").lowercase(),
-        ngResult.items, holder.refreshTick, orbMediaServices, holder.orbCache, onNotice)
+        ngResult.items, holder.refreshTick, orbMediaServices, holder.orbCache, onNotice,
+        visibleThreadUrls = {
+            if (settings.sameHeight) holder.gridState.layoutInfo.visibleItemsInfo.mapNotNull { it.key as? String }.toSet()
+            else holder.staggeredState.layoutInfo.visibleItemsInfo.mapNotNull { it.key as? String }.toSet()
+        })
     // 照合に時間がかかりすぎて使わなかったNGの正規表現は、一度だけ知らせる（設定のNGの一覧にも出る）。
     var slowNgNoticed by remember(matcher) { mutableStateOf(emptySet<FtutterNgRule>()) }
     LaunchedEffect(titleNg) {
@@ -757,7 +761,8 @@ private fun FtutterCatalogGrid(
                 onOpen = { if (orb.verdict(it) == FtutterOrbVerdict.CLEAR) onOpen(it) },
                 onZoom = { if (it == null || orb.verdict(it) == FtutterOrbVerdict.CLEAR) onZoom(it) },
                 onThumbMenu = onThumbMenu,
-                imageVerdict = orb.verdict(item)
+                imageVerdict = orb.verdict(item),
+                imageBytes = if (orb.active.isNotEmpty()) orb.url(item)?.let(holder.orbCache::image) else null
             )
         }
         val blur = if (zoomedActive) Modifier.blur(10.dp) else Modifier
@@ -830,7 +835,8 @@ private fun FtutterCatalogCell(
     onOpen: (CatalogItem) -> Unit,
     onZoom: (CatalogItem?) -> Unit,
     onThumbMenu: (CatalogItem) -> Unit,
-    imageVerdict: FtutterOrbVerdict?
+    imageVerdict: FtutterOrbVerdict?,
+    imageBytes: ByteArray?
 ) {
     val colors = LocalFtutterColors.current
     val numbers = ftutterCatalogNumbers(item, history, readCount)
@@ -886,6 +892,7 @@ private fun FtutterCatalogCell(
                 fullImageUrl = item.fullImageUrl,
                 quality = settings.highRes.ordinal, catalog = true,
                 targetSizePx = targetSizePx,
+                encodedImage = imageBytes,
                 contentDescription = title,
                 modifier = Modifier.fillMaxSize().alpha(imageAlpha)
             )

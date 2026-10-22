@@ -21,7 +21,8 @@ import kotlin.io.encoding.Base64
 @Composable
 internal fun rememberFtutterOrbCatalog(
     board: String, items: List<CatalogItem>, refreshTick: Int, services: FutaberMediaServices?,
-    cache: FtutterOrbCache, onNotice: (String) -> Unit
+    cache: FtutterOrbCache, onNotice: (String) -> Unit,
+    visibleThreadUrls: () -> Set<String>
 ): FtutterOrbCatalogState {
     val platformContext = LocalPlatformContext.current
     val https = LocalFtutterPreferences.current.ftutterBool(FtutterKeys.USE_HTTPS, false)
@@ -31,6 +32,7 @@ internal fun rememberFtutterOrbCatalog(
     val store = remember(path) { path?.let { ftutterOrbStore(it) } }
     val scope = rememberCoroutineScope()
     val currentNotice by rememberUpdatedState(onNotice)
+    val currentVisibleThreadUrls by rememberUpdatedState(visibleThreadUrls)
     LaunchedEffect(store, state, refreshTick) {
         if (!available || store == null) return@LaunchedEffect
         try { state.rules = store.load(); state.loadError = null }
@@ -54,6 +56,7 @@ internal fun rememberFtutterOrbCatalog(
             return@LaunchedEffect
         }
         val urls = items.mapNotNull(state::url).toSet()
+        val urlByThread = items.associate { it.threadUrl to state.url(it) }
         state.verdicts = state.verdicts.filterKeys { it in urls }
         var failureNoticed = false
         ftutterCheckOrb(urls.filter { state.verdicts[it] !in setOf(FtutterOrbVerdict.CLEAR, FtutterOrbVerdict.HIDDEN) },
@@ -63,7 +66,7 @@ internal fun rememberFtutterOrbCatalog(
                 failureNoticed = true
                 currentNotice("画像NGを判定できない画像は伏せています。更新で再試行できます")
             }
-        })
+        }, preferredUrls = { currentVisibleThreadUrls().mapNotNull { urlByThread[it] }.toSet() })
     }
 
     var busy by remember { mutableStateOf(false) }

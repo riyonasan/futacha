@@ -25,7 +25,8 @@ internal fun ftutterLoadHighResolution(policy: Int, wifi: Boolean): Boolean = po
 @Composable
 internal fun FtutterThumbnail(
     thumbnailUrl: String?, fullImageUrl: String?, targetSizePx: Int, contentDescription: String,
-    modifier: Modifier = Modifier, fallbackTint: Color = Color.Gray, quality: Int = 0, catalog: Boolean = false
+    modifier: Modifier = Modifier, fallbackTint: Color = Color.Gray, quality: Int = 0, catalog: Boolean = false,
+    encodedImage: ByteArray? = null
 ) {
     val wifi = isCompatWifiConnected(LocalPlatformContext.current)
     val https = LocalFtutterPreferences.current.ftutterBool(FtutterKeys.USE_HTTPS, false)
@@ -35,7 +36,7 @@ internal fun FtutterThumbnail(
     CompositionLocalProvider(LocalHighQualityThumbnailMode provides HighQualityThumbnailMode.OFF) {
         CatalogPreviewImage((full ?: if (catalog) catalogThumb else thumbnailUrl)?.let { ftutterNetworkUrl(it, https) },
             if (full != null) thumbnailUrl?.let { ftutterNetworkUrl(it, https) } else null,
-            targetSizePx, contentDescription, modifier, fallbackTint)
+            targetSizePx, contentDescription, modifier, fallbackTint, encodedImage)
     }
 }
 

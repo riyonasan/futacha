@@ -40,7 +40,8 @@ internal fun CatalogPreviewImage(
     targetSizePx: Int,
     contentDescription: String,
     modifier: Modifier = Modifier,
-    fallbackTint: Color = Color.Gray
+    fallbackTint: Color = Color.Gray,
+    encodedImage: ByteArray? = null
 ) {
     val platformContext = LocalPlatformContext.current
     val features = LocalFutachaSharedFeatures.current
@@ -56,9 +57,10 @@ internal fun CatalogPreviewImage(
     }
     var candidateIndex by remember(candidates) { mutableIntStateOf(0) }
     val activeUrl = candidates.getOrNull(candidateIndex)
-    val imageRequest = remember(activeUrl, targetSizePx) {
+    val imageRequest = remember(activeUrl, targetSizePx, encodedImage) {
         ImageRequest.Builder(platformContext)
-            .data(activeUrl)
+            .data(encodedImage ?: activeUrl)
+            .apply { if (encodedImage != null) memoryCacheKey("ftutter-orb:$activeUrl") }
             .crossfade(false)
             .size(targetSizePx, targetSizePx)
             // Futaba thumbnails are at most 250px: never enlarge them while decoding.
