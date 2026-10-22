@@ -120,3 +120,23 @@ python -m unittest discover -s tools/tests -p test_native_dependencies.py -v
 ```
 
 表示優先の切り替えは、未判定・一致・失敗・ルール変更・キャッシュ再利用と、1件ずつの処理をテスト対象に追加しています。
+
+## フォークの正式配布（13.0-orb.1）
+
+このフォークでは`main`に統合したコミットからAndroid arm64 APKを作り、
+GitHubの通常のReleaseとして公開します。本家のリリースではありません。
+利用者の指定により、検証版から設定・ORB登録を保った上書き更新を可能にするため、
+従来と同じDebug構成・署名・アプリID `com.valoser.futacha.orbtest` を継続します。
+表示名は「ふたちゃ ORB」、バージョンは`13.0-orb.1`、versionCodeは227です。
+
+```powershell
+.\gradlew.bat :app-android:assembleDebug '-Pfutacha.orbStable=true' '-Pfutacha.splitApks=true'
+```
+
+`app-android/build/outputs/apk/debug/app-android-arm64-v8a-debug.apk` を配布します。
+インストール済みの「ふたちゃ ORB検証」をアンインストールせず更新してください。
+署名鍵は引き続きローカルで保持し、リポジトリー・Releaseには含めません。
+このフォーク配布の検証範囲はAndroidのビルド・ORBホストテスト・アプリ単体テスト・
+APK署名と16KB配置の検査です。新しい先表示モードの実機操作・性能、他端末、
+共有OpenCVを使う追尾の実機動作は未確認です。
+本家の全OS向け`verifyReleaseReadiness`合格や、R8を使うRelease構成の検証を意味しません。

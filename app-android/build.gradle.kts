@@ -108,6 +108,7 @@ configurations.configureEach {
 }
 
 val orbTestBuild = providers.gradleProperty("futacha.orbTest").map { it.toBooleanStrict() }.getOrElse(false)
+val orbStableBuild = providers.gradleProperty("futacha.orbStable").map { it.toBooleanStrict() }.getOrElse(false)
 
 android {
     namespace = "com.valoser.futacha"
@@ -136,7 +137,7 @@ android {
         applicationId = "com.valoser.futacha"
         minSdk = 26
         targetSdk = 37
-        versionCode = 226
+        versionCode = if (orbStableBuild) 227 else 226
         versionName = "13.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -168,10 +169,10 @@ android {
 
     buildTypes {
         debug {
-            if (orbTestBuild) {
+            if (orbTestBuild || orbStableBuild) {
                 applicationIdSuffix = ".orbtest"
-                versionNameSuffix = "-orb-test"
-                resValue("string", "app_name", "ふたちゃ ORB検証")
+                versionNameSuffix = if (orbStableBuild) "-orb.1" else "-orb-test"
+                resValue("string", "app_name", if (orbStableBuild) "ふたちゃ ORB" else "ふたちゃ ORB検証")
             }
         }
         release {
@@ -188,7 +189,7 @@ android {
     }
     buildFeatures {
         compose = true
-        resValues = orbTestBuild
+        resValues = orbTestBuild || orbStableBuild
     }
     sourceSets.named("main") {
         // AGP 9.3 rejects Providers on the legacy SourceSet API.  This is a
